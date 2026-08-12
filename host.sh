@@ -25,6 +25,7 @@ ROOT="${FUA_ROOT:-/opt/forkundera-game-server}"
 VOLUME="${FUA_VOLUME:-forkundera-wads}"
 
 ENTRY=""
+VARIANT=""
 PORT=10666
 NAME=""
 PLAYERS=8
@@ -39,6 +40,7 @@ Usage: host.sh <entry> [options]
 
   <entry>              catalogue id to host, e.g. duel40
 
+  --variant ID         which way to play the entry (its default if omitted)
   --port N             UDP+TCP port (default 10666). A second server needs a different one.
   --name "..."         server name shown in the browser
   --players N          player limit (default 8)
@@ -63,6 +65,7 @@ ENTRY="$1"; shift
 
 while [ $# -gt 0 ]; do
 	case "$1" in
+		--variant)  VARIANT="${2:?--variant needs a value}"; shift 2 ;;
 		--port)     PORT="${2:?--port needs a value}"; shift 2 ;;
 		--name)     NAME="${2:?--name needs a value}"; shift 2 ;;
 		--players)  PLAYERS="${2:?--players needs a value}"; shift 2 ;;
@@ -81,7 +84,7 @@ case "${PORT}" in ''|*[!0-9]*) die "--port must be a number" ;; esac
 
 [ "$(id -u)" -eq 0 ] || die "run this as root (it writes ${ROOT}, opens a firewall port and talks to docker)"
 
-INSTANCE="${ENTRY}-${PORT}"
+INSTANCE="${ENTRY}${VARIANT:+-${VARIANT}}-${PORT}"
 DIR="${ROOT}/instances/${INSTANCE}"
 
 #---------------------------------------------------------------------------------------------------
@@ -141,6 +144,7 @@ mkdir -p "${DIR}"
 	echo "      FUA_PORT: \"${PORT}\""
 	echo "      FUA_PLAYERS: \"${PLAYERS}\""
 	echo "      FUA_ANNOUNCE: \"${ANNOUNCE}\""
+	[ -n "${VARIANT}" ]  && echo "      FUA_VARIANT: \"${VARIANT}\""
 	[ -n "${NAME}" ]     && echo "      FUA_NAME: \"${NAME}\""
 	[ -n "${RCON}" ]     && echo "      FUA_RCON: \"${RCON}\""
 	[ -n "${PASSWORD}" ] && echo "      FUA_PASSWORD: \"${PASSWORD}\""
