@@ -193,7 +193,20 @@ log "pulling ${IMAGE}"
 $COMPOSE -f "${DIR}/docker-compose.yml" pull -q 2>/dev/null || $COMPOSE -f "${DIR}/docker-compose.yml" pull
 
 log "starting ${INSTANCE}"
-$COMPOSE -f "${DIR}/docker-compose.yml" up -d
+# [rc4l] --force-recreate, always. Compose compares the COMPOSE FILE and leaves the container alone
+# when it has not changed, which is the wrong question here: almost nothing this script exists to
+# change lives in that file.
+#
+# The catalogue lives in the image, the WADs live in the shared volume, and the entry is re-resolved
+# from both every time the entrypoint runs. So dropping doom2.wad into /data/wads and re-running with
+# the same arguments did nothing at all -- four servers kept their substituted Freedoom, and the logs
+# went on saying "substituted" while it looked like a successful deploy. It took a docker restart to
+# apply, which is not something an operator should have to know.
+#
+# Recreating costs a few seconds of downtime on the one server named on the command line. Running this
+# script is already an explicit act, and "I ran the deploy command and nothing happened" is the worse
+# failure by a distance.
+$COMPOSE -f "${DIR}/docker-compose.yml" up -d --force-recreate
 
 #---------------------------------------------------------------------------------------------------
 # Say what happened
