@@ -134,17 +134,31 @@ if [ "${SCAN_SERVERS}" -eq 1 ]; then
 		fi
 	done
 
+	# [rc4l] EVERY port already spoken for, not just the folders'. The first version only avoided
+	# ports held by other folders and handed 10666 to a new folder while a catalogue server was
+	# already listening on it -- a collision that surfaces as one server silently failing to bind.
+	taken=""
+	if [ -d "${ROOT}/instances" ]; then
+		for inst in "${ROOT}/instances"/*/; do
+			[ -d "${inst}" ] || continue
+			p="$(basename "${inst}")"; p="${p##*-}"
+			case "${p}" in ''|*[!0-9]*) continue ;; esac
+			taken="${taken} ${p}"
+		done
+	fi
+
 	next=10666
 	for d in "${folders[@]}"; do
 		name="$(basename "${d}")"
 		port="$(printf '%s' "${assigned}" | tr ' ' '
 ' | grep "^${name}:" | cut -d: -f2 || true)"
 		if [ -z "${port}" ]; then
-			while printf '%s' "${assigned}" | grep -q ":${next}\$" || printf '%s' "${assigned}" | grep -q ":${next} "; do
+			while printf '%s ' ${taken} | grep -q " ${next} "; do
 				next=$(( next + 1 ))
 			done
 			port="${next}"
 			assigned="${assigned} ${name}:${port}"
+			taken="${taken} ${port}"
 			next=$(( next + 1 ))
 		fi
 		log "servers/${name} -> port ${port}"
