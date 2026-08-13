@@ -153,7 +153,10 @@ if [ "${SCAN_SERVERS}" -eq 1 ]; then
 		port="$(printf '%s' "${assigned}" | tr ' ' '
 ' | grep "^${name}:" | cut -d: -f2 || true)"
 		if [ -z "${port}" ]; then
-			while printf '%s ' ${taken} | grep -q " ${next} "; do
+			# [rc4l] Pad BOTH sides of every entry. Without a leading space the first port in the list
+			# never matched its own search, so the collision check passed on exactly the port most
+			# likely to be taken.
+			while printf ' %s ' ${taken} | grep -q " ${next} "; do
 				next=$(( next + 1 ))
 			done
 			port="${next}"
