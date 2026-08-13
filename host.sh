@@ -28,7 +28,11 @@ ENTRY=""
 VARIANT=""
 PORT=10666
 NAME=""
-PLAYERS=8
+# [rc4l] EMPTY, not 8. FUA_PLAYERS becomes a +cvar the engine applies after the server's own cfg, so
+# a default here silently overrules a server.cfg asking for 64 and the cfg looks broken. Unset means
+# "say nothing", which lets the cfg decide. The entrypoint documents the same rule; defaulting it
+# here defeated it. Pass --players only to override a cfg on purpose.
+PLAYERS=""
 RCON=""
 PASSWORD=""
 REGISTRY=""
@@ -249,7 +253,9 @@ mkdir -p "${DIR}"
 		echo "      FUA_ENTRY: \"${ENTRY}\""
 	fi
 	echo "      FUA_PORT: \"${PORT}\""
-	echo "      FUA_PLAYERS: \"${PLAYERS}\""
+	if [ -n "${PLAYERS}" ]; then
+		echo "      FUA_PLAYERS: \"${PLAYERS}\""
+	fi
 	echo "      FUA_ANNOUNCE: \"${ANNOUNCE}\""
 	[ -n "${VARIANT}" ]  && echo "      FUA_VARIANT: \"${VARIANT}\""
 	[ -n "${NAME}" ]     && echo "      FUA_NAME: \"${NAME}\""
