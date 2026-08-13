@@ -165,7 +165,10 @@ if [ "${SCAN_SERVERS}" -eq 1 ]; then
 			next=$(( next + 1 ))
 		fi
 		log "servers/${name} -> port ${port}"
-		FUA_SERVER_FOLDER="${name}" "$0" "__folder__${name}" --port "${port}" ${NAME:+--name "${NAME}"} || die "servers/${name} failed"
+		# [rc4l] Re-invoke through bash rather than executing $0, which assumes this file carries the
+		# execute bit. It often does not: the documented install is curl into /tmp and `bash host.sh`,
+		# and that path failed with "Permission denied" the first time a folder deployed.
+		FUA_SERVER_FOLDER="${name}" bash "$0" "__folder__${name}" --port "${port}" ${NAME:+--name "${NAME}"} || die "servers/${name} failed"
 	done
 	log "all ${#folders[@]} server folder(s) deployed"
 	exit 0
