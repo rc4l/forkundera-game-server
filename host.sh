@@ -36,8 +36,9 @@ ANNOUNCE=1
 
 usage() {
 	cat <<'USAGE'
-Usage: host.sh <entry> [options]
+Usage: host.sh [<entry>] [options]
 
+  no arguments         deploy every folder under servers/ -- see below
   <entry>              catalogue id to host, e.g. duel40
 
   --variant ID         which way to play the entry (its default if omitted)
@@ -50,8 +51,20 @@ Usage: host.sh <entry> [options]
   --private            do not announce at all
   --image REF          override the container image
 
-Run it again with a different --port to add another server. Run it again with the SAME port to
-upgrade that one in place.
+A server folder holds exactly two files:
+
+  servers/myserver/server.cfg    how it plays -- every cvar, sv_hostname included
+  servers/myserver/wads.txt      what to load, in order:
+
+                                     iwad doom2.wad
+                                     file mymod.pk3
+
+Ports are assigned from 10666 upward and REMEMBERED, so adding a folder never moves a server that
+already exists. Put the wads themselves where the store lives; folder mode never downloads, because
+without a hash there is nothing to check a download against.
+
+Run it again with a different --port to add another catalogue server. Run it again with the SAME
+port to upgrade that one in place.
 USAGE
 }
 
@@ -59,9 +72,16 @@ log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m==> %s\033[0m\n' "$*" >&2; exit 1; }
 
-[ $# -gt 0 ] || { usage; exit 2; }
-case "$1" in -h|--help) usage; exit 0 ;; esac
-ENTRY="$1"; shift
+case "${1-}" in -h|--help) usage; exit 0 ;; esac
+
+# [rc4l] No arguments means the servers/ folder decides. Each folder there is one server, and adding
+# one is dropping in two files rather than remembering a command line.
+if [ $# -eq 0 ]; then
+	SCAN_SERVERS=1
+else
+	SCAN_SERVERS=0
+	ENTRY="$1"; shift
+fi
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -84,7 +104,68 @@ case "${PORT}" in ''|*[!0-9]*) die "--port must be a number" ;; esac
 
 [ "$(id -u)" -eq 0 ] || die "run this as root (it writes ${ROOT}, opens a firewall port and talks to docker)"
 
-INSTANCE="${ENTRY}${VARIANT:+-${VARIANT}}-${PORT}"
+if [ "${SCAN_SERVERS}" -eq 1 ]; then
+	SERVERS_DIR="${ROOT}/servers"
+	mkdir -p "${SERVERS_DIR}"
+
+	shopt -s nullglob
+	folders=( "${SERVERS_DIR}"/*/ )
+	shopt -u nullglob
+	[ "${#folders[@]}" -gt 0 ] || die "no server folders in ${SERVERS_DIR} -- make one holding server.cfg and wads.txt"
+
+	# [rc4l] VERIFY EVERYTHING BEFORE STARTING ANYTHING. One bad folder should not leave half a fleet
+	# up and the operator guessing which half.
+	for d in "${folders[@]}"; do
+		name="$(basename "${d}")"
+		[ -f "${d}server.cfg" ] || die "${name}: no server.cfg"
+		[ -f "${d}wads.txt" ]   || die "${name}: no wads.txt"
+		grep -qE "^[[:space:]]*iwad[[:space:]]+[^[:space:]]" "${d}wads.txt" 			|| die "${name}: wads.txt names no iwad, and a server cannot start without one"
+	done
+
+	# [rc4l] A folder that already has an instance KEEPS ITS PORT. If ports came from list position,
+	# adding a folder would shift every server after it -- silently changing addresses people have
+	# bookmarked, and making the registry treat them as new servers.
+	assigned=""
+	for d in "${folders[@]}"; do
+		name="$(basename "${d}")"
+		existing="$(ls -d "${ROOT}/instances/${name}-"* 2>/dev/null | head -1 || true)"
+		if [ -n "${existing}" ]; then
+			assigned="${assigned} ${name}:${existing##*-}"
+		fi
+	done
+
+	next=10666
+	for d in "${folders[@]}"; do
+		name="$(basename "${d}")"
+		port="$(printf '%s' "${assigned}" | tr ' ' '
+' | grep "^${name}:" | cut -d: -f2 || true)"
+		if [ -z "${port}" ]; then
+			while printf '%s' "${assigned}" | grep -q ":${next}\$" || printf '%s' "${assigned}" | grep -q ":${next} "; do
+				next=$(( next + 1 ))
+			done
+			port="${next}"
+			assigned="${assigned} ${name}:${port}"
+			next=$(( next + 1 ))
+		fi
+		log "servers/${name} -> port ${port}"
+		FUA_SERVER_FOLDER="${name}" "$0" "__folder__${name}" --port "${port}" ${NAME:+--name "${NAME}"} || die "servers/${name} failed"
+	done
+	log "all ${#folders[@]} server folder(s) deployed"
+	exit 0
+fi
+
+# [rc4l] A folder-mode instance is named for its folder; the entry id is a marker the scan passes back
+# to this same script so there is one place that writes a compose file.
+case "${ENTRY}" in
+	__folder__*)
+		SERVER_FOLDER="${ENTRY#__folder__}"
+		INSTANCE="${SERVER_FOLDER}-${PORT}"
+		;;
+	*)
+		SERVER_FOLDER=""
+		INSTANCE="${ENTRY}${VARIANT:+-${VARIANT}}-${PORT}"
+		;;
+esac
 DIR="${ROOT}/instances/${INSTANCE}"
 
 #---------------------------------------------------------------------------------------------------
@@ -139,8 +220,14 @@ mkdir -p "${DIR}"
 	echo "    stop_grace_period: 30s"
 	echo "    volumes:"
 	echo "      - ${VOLUME}:/data"
+	# [rc4l] Read-only: the server has no business writing to your server definitions.
+	[ -d "${ROOT}/servers" ] && echo "      - ${ROOT}/servers:/data/servers:ro"
 	echo "    environment:"
-	echo "      FUA_ENTRY: \"${ENTRY}\""
+	if [ -n "${SERVER_FOLDER}" ]; then
+		echo "      FUA_SERVER_DIR: \"/data/servers/${SERVER_FOLDER}\""
+	else
+		echo "      FUA_ENTRY: \"${ENTRY}\""
+	fi
 	echo "      FUA_PORT: \"${PORT}\""
 	echo "      FUA_PLAYERS: \"${PLAYERS}\""
 	echo "      FUA_ANNOUNCE: \"${ANNOUNCE}\""
