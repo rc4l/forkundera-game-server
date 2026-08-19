@@ -18,7 +18,7 @@ set -euo pipefail
 # [rc4l] PINNED TO A RELEASE, not :latest. A moving tag means any later `docker compose up` can change
 # the engine under a running fleet without anyone asking for it, and the compose file stops describing
 # what is actually deployed. Bump this line when you intend to update; --image still overrides.
-IMAGE="${FUA_IMAGE:-ghcr.io/rc4l/forkundera-game-server:engine-v0.3.0}"
+IMAGE="${FUA_IMAGE:-ghcr.io/rc4l/forkundera-game-server:engine-v0.3.1}"
 ROOT="${FUA_ROOT:-/opt/forkundera-game-server}"
 
 # [rc4l] ONE volume for every server on the box, and this is the whole reason ten servers cost what
